@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>الحضور والانصراف</title>
+<style>
+:root{box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px);--bg:#f5f6f8;--card:#fff;--tx:#1b1f24;--mu:#667085;--bd:#e3e6ea;--pr:#0f766e;--prt:#fff;--bad:#c0392b;--ok:#15803d;color-scheme:light}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#111418;--card:#1a1f26;--tx:#eceff3;--mu:#98a2b3;--bd:#2b323c;--pr:#2dd4bf;--prt:#06201c;--bad:#f1948a;--ok:#4ade80;color-scheme:dark}}
+:root[data-theme="dark"]{--bg:#111418;--card:#1a1f26;--tx:#eceff3;--mu:#98a2b3;--bd:#2b323c;--pr:#2dd4bf;--prt:#06201c;--bad:#f1948a;--ok:#4ade80;color-scheme:dark}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--tx);font-family:Tahoma,"Segoe UI",Arial,sans-serif;line-height:1.6}
+.w{max-width:900px;margin:0 auto;padding:14px}
+h1{font-size:20px;margin:6px 0 12px}
+nav{display:flex;gap:6px;overflow-x:auto;margin-bottom:12px}
+nav button{flex:1;white-space:nowrap}
+button,input,select,textarea{font:inherit;color:inherit}
+button{background:var(--card);border:1px solid var(--bd);border-radius:10px;padding:9px 14px;cursor:pointer}
+button.on,button.p{background:var(--pr);color:var(--prt);border-color:var(--pr)}
+button.d{color:var(--bad)}
+input,select,textarea{background:var(--card);border:1px solid var(--bd);border-radius:10px;padding:9px 10px;width:100%}
+.c{background:var(--card);border:1px solid var(--bd);border-radius:14px;padding:14px;margin-bottom:12px}
+.g{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px}
+.clk{font-size:44px;font-weight:700;text-align:center;letter-spacing:2px;direction:ltr}
+.sub{color:var(--mu);text-align:center;font-size:14px}
+label{display:block;font-size:13px;color:var(--mu);margin:8px 0 3px}
+.msg{margin-top:10px;padding:10px;border-radius:10px;text-align:center;font-weight:600}
+.ok{background:color-mix(in srgb,var(--ok) 15%,transparent);color:var(--ok)}
+.er{background:color-mix(in srgb,var(--bad) 15%,transparent);color:var(--bad)}
+.sc{overflow-x:auto}
+table{border-collapse:collapse;width:100%;font-size:14px;min-width:700px}
+th,td{padding:8px;border-bottom:1px solid var(--bd);text-align:center;white-space:nowrap}
+th{color:var(--mu);font-weight:600}
+td:first-child,th:first-child{text-align:right}
+.neg{color:var(--bad)}.net{font-weight:700;color:var(--ok)}
+.sel{border-color:var(--pr);background:var(--pr);color:var(--prt)}
+.row{display:flex;gap:8px;align-items:center;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--bd)}
+@media print{nav,.np{display:none}:root:not([a]):not([b]):not([c]){--bg:#fff;--card:#fff;--tx:#000;--mu:#333;--bd:#ccc}}
+</style>
+</head>
+<body>
+<div class="w">
+<h1>⏱️ الحضور والانصراف</h1>
+<nav id="nav"></nav>
+<div id="v"><div class="c sub">جارٍ التحميل…</div></div>
+</div>
+<script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script>
+const DEF={start:'09:00',end:'17:00',grace:10,mult:1,weekend:[5],cur:'ج.م',ot:1.5};
+const API='ضع_رابط_Apps_Script_هنا';
+let admin=false,ready=false,netErr='',tab='in',sel=null,msg=null,key=sessionStorage.getItem('k')||'',link=location.origin+location.pathname;
+let cfg={...DEF},emps=[],L={};
+const pad=n=>String(n).padStart(2,'0');
+const ymd=d=>d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate());
+const hm=d=>pad(d.getHours())+':'+pad(d.getMinutes());
+const mn=t=>{const[a,b]=t.split(':').map(Number);return a*60+b};
+const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const f=n=>Math.round(n).toLocaleString('en-US');
+const $nav=document.getElementById('nav'),$v=document.getElementById('v');
+let month=ymd(new Date()).slice(0,7);
+async function api(a,d){const r=await fetch(API,{method:'POST',headers:{'Content-Type':'text/plain'},body:JSON.stringify({a,key,...d})});const j=await r.json();if(j.err)throw new Error(j.err);return j}
+async function load(){
+ try{
+  const j=await api(admin?'adm_get':'pub');emps=j.emps;cfg={...DEF,...j.cfg};L={};netErr='';
+  if(!admin)L[j.now.d]={};
+  j.logs.forEach(x=>{(L[x.d]=L[x.d]||{})[x.id]=x});
+ }catch(e){netErr=e.message;if(admin){admin=false;key='';sessionStorage.removeItem('k')}}
+ ready=true;draw();
+}
+async function login(){const p=prompt('كلمة سر الإدارة');if(!p)return;key=p;admin=true;sessionStorage.setItem('k',p);await load();if(netErr){alert(netErr);netErr='';draw()}}
+admin=!!key;load();
+function go(t){tab=t;msg=null;draw()}
+const T=[['in','تسجيل'],['emp','الموظفون'],['rep','التقرير الشهري'],['set','الإعدادات'],['imp','استيراد'],['qr','ملصق الحائط']];
+function draw(){
+ if(!ready)return;
+ $nav.innerHTML=admin?T.map(([k,l])=>`<button class="${k==tab?'on':''}" onclick="go('${k}')">${l}</button>`).join(''):'';
+ if(netErr){$v.innerHTML='<div class="c msg er">'+esc(netErr)+'</div><div class="c sub">تحقق من رابط Apps Script (المتغير API في أول السكربت) ومن الاتصال بالإنترنت.</div>';return}
+ $v.innerHTML=(admin?{in:vIn,emp:vEmp,rep:vRep,set:vSet,qr:vQr,imp:vImp}[tab]:vIn)()+(admin?'':'<div class="sub np" style="margin-top:16px"><a href="#" onclick="login();return false" style="color:var(--mu)">دخول الإدارة</a></div>');
+ tick();
+}
+function tick(){const e=document.getElementById('clk');if(e)e.textContent=new Date().toLocaleTimeString('en-GB')}
+setInterval(tick,1000);
+
+function vIn(){
+ if(!emps.length)return'<div class="c sub">لا يوجد موظفون بعد.</div>';
+ const k=ymd(new Date()),rec=sel&&(L[k]||{})[sel];
+ const st=rec?`حضور ${rec.in}${rec.out?' — انصراف '+rec.out:''}`:'';
+ return`<div class="c"><div class="clk" id="clk"></div><div class="sub">${new Date().toLocaleDateString('ar-EG',{weekday:'long',day:'numeric',month:'long',year:'numeric'})}</div></div>
+ <div class="c"><div class="g">${emps.map(e=>`<button class="${e.id==sel?'sel':''}" onclick="sel='${e.id}';msg=null;draw()">${esc(e.name)}</button>`).join('')}</div>
+ ${sel?`<label>الرقم السري (PIN)</label><input id="pin" type="password" inputmode="numeric" autocomplete="off"><div class="sub" style="margin-top:6px">${st}</div>
+ <button class="p" style="width:100%;margin-top:10px;padding:14px" onclick="punch()">${rec&&!rec.out?'تسجيل انصراف':'تسجيل حضور'}</button>`:'<div class="sub" style="margin-top:10px">اختر اسمك</div>'}
+ ${msg?`<div class="msg ${msg[0]}">${msg[1]}</div>`:''}</div>`;
+}
+async function punch(){
+ const pv=document.getElementById('pin').value;
+ try{const r=await api('punch',{id:sel,pin:pv}),x=mn(r.t);
+  if(r.kind=='in'){const l=x-mn(cfg.start);msg=l>cfg.grace?['er',`تم تسجيل الحضور — تأخير ${l} دقيقة`]:['ok','تم تسجيل الحضور في الموعد ✓']}
+  else if(r.kind=='out'){const y=mn(cfg.end)-x;msg=y>0?['er',`تم تسجيل الانصراف — قبل الموعد بـ ${y} دقيقة`]:['ok','تم تسجيل الانصراف ✓ شكراً لك']}
+  else if(r.kind=='dup')msg=['er','تم تسجيل حضورك للتو'];
+  else msg=['er','سجّلت حضورك وانصرافك اليوم بالفعل'];
+ }catch(e){msg=['er',e.message]}
+ await load();
+}
+
+function vEmp(){
+ return`<div class="c"><b>إضافة موظف</b><div class="g"><div><label>الاسم</label><input id="en"></div><div><label>PIN (4 أرقام أو أكثر)</label><input id="ep" inputmode="numeric"></div><div><label>الراتب الشهري</label><input id="es" type="number" inputmode="decimal"></div></div>
+ <button class="p" style="margin-top:10px" onclick="addE()">إضافة</button></div>
+ <div class="c"><b>الموظفون (${emps.length})</b>${emps.map(e=>`<div class="row"><span>${esc(e.name)} <small class="sub">· ${f(e.salary)+' '+esc(cfg.cur)+' · PIN '+esc(e.pin)}</small></span><button class="d" onclick="delE('${e.id}')">حذف</button></div>`).join('')||'<div class="sub">لا يوجد موظفون بعد</div>'}</div>
+ ${emps.length?`<div class="c"><b>تعديل أو إضافة سجل يدوياً</b><div class="g"><div><label>الموظف</label><select id="mE">${emps.map(e=>`<option value="${e.id}">${esc(e.name)}</option>`).join('')}</select></div><div><label>التاريخ</label><input id="mD" type="date" value="${ymd(new Date())}"></div><div><label>حضور</label><input id="mI" type="time"></div><div><label>انصراف</label><input id="mO" type="time"></div></div>
+ <button class="p" style="margin-top:10px" onclick="manual()">حفظ السجل</button> <button class="d" onclick="manual(1)">مسح السجل</button></div>`:''}`;
+}
+async function act(a,d){try{await api(a,d);await load()}catch(e){alert(e.message)}}
+function addE(){const n=en.value.trim(),p=ep.value.trim(),s=+es.value;if(!n||p.length<4||!(s>0))return alert('أدخل الاسم وPIN من 4 أرقام على الأقل والراتب');act('adm_add',{name:n,pin:p,salary:s})}
+function delE(id){if(confirm('حذف الموظف؟'))act('adm_del',{id})}
+function manual(del){const id=mE.value,d=mD.value;if(!d)return;if(!del&&!mI.value)return alert('أدخل وقت الحضور');act('adm_log',{d,id,in:del?'':mI.value,out:mO.value||''})}
+
+function calc(m){
+ const[y,mo]=m.split('-').map(Number),dim=new Date(y,mo,0).getDate(),today=ymd(new Date()),c=cfg;
+ const shift=mn(c.end)-mn(c.start);let work=0;const days=[];
+ for(let d=1;d<=dim;d++){const dt=new Date(y,mo-1,d),k=ymd(dt),w=!c.weekend.includes(dt.getDay());if(w)work++;days.push({k,w})}
+ return emps.map(e=>{
+  let pres=0,req=0,late=0,early=0,lateDays=0,noOut=0,ot=0;
+  days.forEach(({k,w})=>{const r=(L[k]||{})[e.id];
+   if(w&&(k<today||r))req++;
+   if(!r)return;if(w)pres++;
+   const l=mn(r.in)-mn(c.start);if(l>c.grace){late+=l;lateDays++}
+   if(r.out){const x=mn(c.end)-mn(r.out);if(x>0)early+=x;else if(w)ot-=x}else if(k<today)noOut++;
+  });
+  const sal=e.salary||0,abs=Math.max(0,req-pres),daily=sal/work,pm=daily/shift;
+  const dl=late*pm*c.mult,de=early*pm,da=abs*daily,tot=dl+de+da,dot=ot*pm*c.ot;
+  return{e,sal,pres,abs,late,lateDays,early,noOut,dl,de,da,tot,ot,dot,net:sal-tot+dot};
+ });
+}
+function vRep(){
+ const R=calc(month),S=k=>R.reduce((a,r)=>a+r[k],0);
+ return`<div class="c np"><label>الشهر</label><input type="month" value="${month}" onchange="month=this.value;draw()"></div>
+ <div class="c sc"><table><tr><th>الموظف</th><th>أيام الحضور</th><th>الغياب</th><th>التأخير (د)</th><th>خروج مبكر (د)</th><th>إضافي (د)</th><th>الراتب</th><th>بدل إضافي</th><th>الخصومات</th><th>الصافي</th></tr>
+ ${R.map(r=>`<tr><td>${esc(r.e.name)}${r.noOut?` <small class="neg">(${r.noOut} بدون انصراف)</small>`:''}</td><td>${r.pres}</td><td class="${r.abs?'neg':''}">${r.abs}</td><td class="${r.late?'neg':''}">${r.late} <small>(${r.lateDays} يوم)</small></td><td class="${r.early?'neg':''}">${r.early}</td><td>${r.ot}</td><td>${f(r.sal)}</td><td class="net">${f(r.dot)}</td><td class="${r.tot?'neg':''}" title="تأخير ${f(r.dl)} · مبكر ${f(r.de)} · غياب ${f(r.da)}">${f(r.tot)}</td><td class="net">${f(r.net)}</td></tr>`).join('')||'<tr><td colspan="10" class="sub">لا توجد بيانات</td></tr>'}
+ ${R.length?`<tr><th>الإجمالي</th><td></td><td></td><td></td><td></td><td></td><th>${f(S('sal'))}</th><th class="net">${f(S('dot'))}</th><th class="neg">${f(S('tot'))}</th><th class="net">${f(S('net'))}</th></tr>`:''}</table>
+ <div class="sub" style="margin-top:8px">المبالغ بـ ${esc(cfg.cur)} · مرّر المؤشر على الخصم لرؤية التفصيل</div></div>
+ <div class="np"><button class="p" onclick="csv()">نسخ التقرير (CSV)</button> <button onclick="window.print()">طباعة</button></div>`;
+}
+function csv(){
+ const h=['الموظف','أيام الحضور','الغياب','دقائق التأخير','دقائق الخروج المبكر','الراتب','خصم التأخير','خصم الخروج المبكر','خصم الغياب','إجمالي الخصومات','دقائق الإضافي','بدل الإضافي','الصافي'];
+ const t=[h,...calc(month).map(r=>[r.e.name,r.pres,r.abs,r.late,r.early,r.sal,r.dl,r.de,r.da,r.tot,r.ot,r.dot,r.net].map(x=>typeof x=='number'?Math.round(x):x))].map(r=>r.join(',')).join('\n');
+ const ta=document.createElement('textarea');ta.value=t;document.body.appendChild(ta);ta.select();
+ let ok=false;try{ok=document.execCommand('copy')}catch(e){}ta.remove();
+ alert(ok?'تم النسخ — الصقه في Excel أو Google Sheets':'تعذّر النسخ');
+}
+
+function vSet(){
+ const c=cfg;
+ return`<div class="c"><div class="g">
+ <div><label>بداية الدوام</label><input id="s1" type="time" value="${c.start}"></div>
+ <div><label>نهاية الدوام</label><input id="s2" type="time" value="${c.end}"></div>
+ <div><label>فترة السماح (دقائق)</label><input id="s3" type="number" value="${c.grace}"></div>
+ <div><label>معامل خصم التأخير (1 = بقدر الوقت)</label><input id="s4" type="number" step="0.25" value="${c.mult}"></div>
+ <div><label>الإجازة الأسبوعية</label><select id="s5"><option value="5" ${c.weekend.length==1?'selected':''}>الجمعة</option><option value="5,6" ${c.weekend.length==2?'selected':''}>الجمعة والسبت</option></select></div>
+ <div><label>العملة</label><input id="s6" value="${esc(c.cur)}"></div>
+ <div><label>معامل بدل الإضافي (0 = إلغاء)</label><input id="s7" type="number" step="0.25" value="${c.ot}"></div></div>
+ <p class="sub" style="text-align:right">أجر اليوم = الراتب ÷ أيام العمل بالشهر، وأجر الدقيقة = أجر اليوم ÷ دقائق الدوام. الغياب يخصم يوماً كاملاً. التأخير لا يُحتسب إلا إذا تجاوز فترة السماح، وحينها يُحتسب كامله. بدل الإضافي = الدقائق بعد نهاية الدوام × أجر الدقيقة × المعامل.</p>
+ <button class="p" onclick="setS()">حفظ الإعدادات</button></div>`;
+}
+async function setS(){
+ const v={start:s1.value||DEF.start,end:s2.value||DEF.end,grace:+s3.value||0,mult:+s4.value||1,weekend:s5.value.split(',').map(Number),cur:s6.value||DEF.cur,ot:s7.value===''?1.5:+s7.value};
+ await act('adm_cfg',{cfg:v});alert('تم')
+}
+
+let imp=[],impTried=false,ipTxt='';
+const nd=v=>String(v).replace(/[٠-٩]/g,c=>'٠١٢٣٤٥٦٧٨٩'.indexOf(c));
+const nn=v=>nd(v).replace(/[\u064B-\u0652\u0640]/g,'').replace(/[أإآ]/g,'ا').replace(/ى/g,'ي').replace(/ة/g,'ه').replace(/\s+/g,' ').trim().toLowerCase();
+function pD(v){
+ let y,m,d;
+ if(typeof v=='number'){if(v<20000)return'';const t=new Date(Date.UTC(1899,11,30)+Math.floor(v)*864e5);y=t.getUTCFullYear();m=t.getUTCMonth()+1;d=t.getUTCDate()}
+ else{const s=nd(v).trim();let a=s.match(/^(\d{4})[-\/.](\d{1,2})[-\/.](\d{1,2})/);
+  if(a){y=+a[1];m=+a[2];d=+a[3]}
+  else if(a=s.match(/^(\d{1,2})[-\/.](\d{1,2})[-\/.](\d{2,4})/)){d=+a[1];m=+a[2];y=+a[3];if(y<100)y+=2000}
+  else return''}
+ const t=new Date(y,m-1,d);return t.getFullYear()==y&&t.getMonth()==m-1&&t.getDate()==d?y+'-'+pad(m)+'-'+pad(d):'';
+}
+function pT(v){
+ if(typeof v=='number'){const k=Math.round((v%1)*1440);return v%1?pad(Math.floor(k/60)%24)+':'+pad(k%60):''}
+ const m=nd(v).trim().match(/^(\d{1,2})[:.](\d{2})(?::\d{2})?\s*([AaPpصم])?/);if(!m)return'';
+ let h=+m[1];const ap=m[3];if(ap&&/[Pp]|م/.test(ap)&&h<12)h+=12;if(ap&&/[Aa]|ص/.test(ap)&&h==12)h=0;
+ return h<24&&+m[2]<60?pad(h)+':'+pad(+m[2]):'';
+}
+function impRows(a){
+ const idx={};emps.forEach(e=>{idx[nn(e.name)]=e.id});
+ imp=[];impTried=true;
+ a.forEach(r=>{const d=pD(r[1]),i=pT(r[2]),o=pT(r[3]);if(!d&&!i)return;
+  const id=idx[nn(r[0])];
+  imp.push({name:String(r[0]),d,i,o,id,err:!id?'اسم غير معروف':!d?'تاريخ غير صحيح':!i?'وقت حضور غير صحيح':''});
+ });
+ draw();
+}
+function impText(){ipTxt=document.getElementById('ip').value;impRows(ipTxt.split(/\r?\n/).filter(l=>l.trim()).map(l=>l.split(l.includes('\t')?'\t':',')))}
+function impFile(f){
+ if(!f)return;const r=new FileReader();
+ r.onload=e=>{try{const wb=XLSX.read(e.target.result,{type:'array'});impRows(XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],{header:1,raw:true,defval:''}))}catch(x){alert('تعذّر قراءة الملف')}};
+ r.readAsArrayBuffer(f);
+}
+async function doImp(){
+ const v=imp.filter(x=>!x.err).map(x=>({d:x.d,id:x.id,in:x.i,out:x.o}));
+ try{for(let i=0;i<v.length;i+=300)await api('adm_import',{rows:v.slice(i,i+300)});
+  alert('تم استيراد '+v.length+' سجل');imp=[];ipTxt='';impTried=false;await load()}catch(e){alert(e.message)}
+}
+function impView(){
+ if(!imp.length)return impTried?'<div class="msg er">لم يُعثر على صفوف صالحة — تأكد من ترتيب الأعمدة</div>':'';
+ const ok=imp.filter(x=>!x.err).length,sh=[...imp].sort((a,b)=>!!b.err-!!a.err);
+ return`<div class="sub" style="margin:10px 0">${ok} صف جاهز${imp.length-ok?` · <span class="neg">${imp.length-ok} به أخطاء (لن يُستورد)</span>`:''}</div>
+ <div class="sc"><table><tr><th>الاسم</th><th>التاريخ</th><th>حضور</th><th>انصراف</th><th></th></tr>${sh.slice(0,60).map(x=>`<tr><td>${esc(x.name)}</td><td>${x.d}</td><td>${x.i}</td><td>${x.o}</td><td class="${x.err?'neg':''}">${x.err||'✓'}</td></tr>`).join('')}</table></div>
+ ${imp.length>60?'<div class="sub">يعرض أول 60 صفاً (الأخطاء أولاً)</div>':''}
+ <button class="p" style="margin-top:10px" ${ok?'':'disabled'} onclick="doImp()">استيراد ${ok} سجل</button>`;
+}
+function vImp(){
+ return`<div class="c"><b>استيراد حضور من Excel</b>
+ <p class="sub" style="text-align:right">الأعمدة بالترتيب: الاسم، التاريخ، الحضور، الانصراف (صف العناوين اختياري). الاسم يجب أن يطابق اسم الموظف في التطبيق. إن وُجد سجل لنفس الموظف في نفس اليوم يُستبدل.</p>
+ <label>ملف Excel أو CSV</label><input type="file" accept=".xlsx,.xls,.csv" onchange="impFile(this.files[0])">
+ <label>أو الصق الجدول هنا</label><textarea id="ip" rows="5" onchange="impText()">${esc(ipTxt)}</textarea>
+ ${impView()}</div>`;
+}
+function vQr(){
+ if(typeof qrcode=='undefined')return'<div class="c sub">تعذّر تحميل مكتبة QR — أعد تحميل الصفحة.</div>';
+ const q=qrcode(0,'M');q.addData(link);q.make();
+ return`<div class="np c"><label>رابط التطبيق الذي يفتحه الموظفون</label><input value="${esc(link)}" onchange="link=this.value.trim();draw()"></div>
+ <button class="p np" onclick="window.print()" style="margin-bottom:12px">طباعة الملصق</button>
+ <div class="c" style="text-align:center"><div style="font-size:28px;font-weight:700">سجّل حضورك وانصرافك</div>
+ <div class="sub" style="font-size:16px;margin:6px 0 14px">امسح الرمز بكاميرا موبايلك، ثم اختر اسمك وأدخل رقمك السري</div>
+ <div style="background:#fff;padding:14px;border-radius:12px;display:inline-block"><img alt="QR" src="${q.createDataURL(8,0)}" style="width:300px;max-width:100%;image-rendering:pixelated;display:block"></div></div>`;
+}
+</script>
+</body>
+</html>
